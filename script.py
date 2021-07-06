@@ -3,12 +3,7 @@ import csv
 import argparse
 import json
 import pandas as pd
-import IPython
-from IPython.core.display import display
-
-
-def packer_for_pandas(list):
-    pass
+from tabulate import tabulate
 
 
 def organize(product_list):
@@ -47,17 +42,20 @@ def main():
     assert args.gerarchia.endswith(
         '.csv'), "Il file gerarchia deve essere di tipo csv"
     assert args.anagrafica.endswith(
-        '.csv'), "Il file gerarchia deve essere di tipo csv"
+        '.csv'), "Il file anagrafica deve essere di tipo csv"
+    
+    df = pd.read_csv(args.anagrafica, sep=';', usecols = [i for i in range(len(extract(args.anagrafica)[0]))])
+
+
     organized = organize(extract(args.anagrafica))
-    '''
+
     #test unit
     with open(args.output, 'w') as f:
-        for i in range(10):
-            json.dump(organized[i], f)
-    '''
-    df = pd.DataFrame(organized)
+            json.dump(organized[:-30], f)
 
-    display(df)
+
+    #df = pd.DataFrame(organized[:-30])
+    #print(tabulate(df, headers='keys', tablefmt='psql'))
 
 
 if __name__ == "__main__":
