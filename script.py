@@ -2,9 +2,15 @@
 import csv
 import argparse
 import json
-import pandas as pd
-from tabulate import tabulate
+import re
+from anytree import Node, RenderTree
+# import pandas as pd
 
+
+
+# regex per ripulire dati numerici
+def data_cleaner(data):
+    return re.sub("=*\"", '', data)
 
 def organize(product_list):
     categorized_products = []
@@ -13,7 +19,7 @@ def organize(product_list):
         current_product = {}
         for data, column in zip(product, product_list[0]):
             if 'N.D.' not in data:
-                current_product[column] = data
+                current_product[column] = data_cleaner(data)
         categorized_products.append(current_product)
     return categorized_products
 
@@ -25,6 +31,13 @@ def extract(input_file, separator=';'):
         for row in csv_reader:
             extracted.append(row)
     return extracted
+
+
+def tree_builder(gerarchia_estratta):
+    dictionary = {}
+    for categoria in gerarchia_estratta:
+        pass
+
 
 
 def main():
@@ -43,19 +56,18 @@ def main():
         '.csv'), "Il file gerarchia deve essere di tipo csv"
     assert args.anagrafica.endswith(
         '.csv'), "Il file anagrafica deve essere di tipo csv"
-    
-    df = pd.read_csv(args.anagrafica, sep=';', usecols = [i for i in range(len(extract(args.anagrafica)[0]))])
+    # df = pd.read_csv(args.anagrafica, sep=';', usecols = [i for i in range(len(extract(args.anagrafica)[0]))])
 
+    # estrae e ripulisce i dati
+    organized = organize(extract(args.gerarchia))
 
-    organized = organize(extract(args.anagrafica))
-
-    #test unit
+    # test unit
     with open(args.output, 'w') as f:
-            json.dump(organized[:-30], f)
+        json.dump(organized[30:], f)
 
 
-    #df = pd.DataFrame(organized[:-30])
-    #print(tabulate(df, headers='keys', tablefmt='psql'))
+# df = pd.DataFrame(organized[:-30])
+# print(tabulate(df, headers='keys', tablefmt='psql'))
 
 
 if __name__ == "__main__":
