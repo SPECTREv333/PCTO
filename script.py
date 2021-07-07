@@ -77,6 +77,21 @@ def tree_builder(gerarchia_estratta):
     return tree, leaves_data
 
 
+def dictionary_slicer(dictionary, start, end):
+    sliced_dictionary={}
+    for key, i in zip(dictionary, range(start, end)):
+        sliced_dictionary[key] = dictionary[key]
+    return sliced_dictionary
+
+
+def dictionary_cleaner(dictionary, discriminator=""):
+    cleaned_dictionary = {}
+    for key in dictionary:
+        if dictionary[key] != discriminator:
+            cleaned_dictionary[key] = dictionary[key]
+    return cleaned_dictionary
+
+
 def main():
     parser = argparse.ArgumentParser(description='Genera importazione')
     parser.add_argument('-g', '--gerarchia', required=True,
@@ -107,7 +122,6 @@ def main():
     tree, leaves = tree_builder(gerarchia_estratta)
     # salva la rappresentazione grafica dell'albero delle categorie
     tree.save2file("albero_categorie.txt", idhidden=False)
-
     logger.info("tree size: " + str(tree.size()))
 
     # separa le varianti di prodotti tra obsolete e non
@@ -115,7 +129,7 @@ def main():
     varianti_obsolete = []
     for variante in anagrafica_estratta:
         if variante['Codice Categoria'] == '':
-            varianti_obsolete.append(variante)
+            varianti_obsolete.append(dictionary_slicer(variante, 0, 2))
         else:
             varianti.append(variante)
 
@@ -124,17 +138,17 @@ def main():
         categorie = []
         for node in tree.all_nodes()[1:]:
             if node.data is not None:
-                categorie.append(node.data)
+                categorie.append(dictionary_cleaner(node.data))
         json.dump(categorie, f)
 
     with open("varianti con caratteristiche.json", 'w', encoding='utf-8-sig') as f:
-        json.dump(varianti[30:], f)
+        json.dump(varianti[10:], f)
 
-    with open("varianti_obsolete con caratteristiche.json", 'w', encoding='utf-8-sig') as f:
-        json.dump(varianti_obsolete[30:], f)
+    with open("varianti obsolete.json", 'w', encoding='utf-8-sig') as f:
+        json.dump(varianti_obsolete[10:], f)
 
     with open("prodotti.json", 'w', encoding='utf-8-sig') as f:
-        json.dump(leaves[30:], f)
+        json.dump(leaves[10:], f)
 
 
 if __name__ == "__main__":
