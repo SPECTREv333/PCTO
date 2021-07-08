@@ -1,10 +1,11 @@
 import csv
 import argparse
 import json
-import re
-import treelib
-from treelib import Tree, Node
 import os
+import re
+import sys
+import treelib
+from treelib import Tree
 import logging
 
 logger = logging.getLogger('logger')
@@ -14,6 +15,7 @@ ch.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 logger.addHandler(ch)
+
 
 # regex di pulizia dati------------------v
 def organize(product_list, clean_regex="=*\"|=", stop_at='N.D.'):
@@ -32,17 +34,29 @@ def organize(product_list, clean_regex="=*\"|=", stop_at='N.D.'):
 
 
 # lettura file csv
-def extract(input_file, separator=';'):
+def read_file(input_file_path):
     extracted = []
-    with open(input_file, mode='r', encoding='utf-8-sig') as f:
-        csv_reader = csv.reader(f, delimiter=separator)
-        for row in csv_reader:
-            logger.debug("Read line: " + str(row))
-            extracted.append(row)
+    with open(input_file_path, mode='r', encoding='utf-8-sig') as f:
+        csv_reader = csv.reader(f, dialect=dialect_sniffer(input_file_path))
+        try:
+            for row in csv_reader:
+                logger.debug("Read line: " + str(row))
+                extracted.append(row)
+        except csv.Error as e:
+            sys.exit('file {}, line {}: {}'.format(input_file_path, csv_reader.line_num, e))
+
     return extracted
 
 
-def tree_builder(gerarchia_estratta):
+def dialect_sniffer(file_path):
+    with open(file_path) as file:
+        dialect = csv.Sniffer().sniff(file.read(1024))
+    return dialect
+
+
+def tree_builder(gerarchia_estratta, nome_colonna_categoria='Nome Categoria/Nodo Italiana',
+                 nome_colonna_codice_categoria='Codice Categoria/Nodo',
+                 nome_colonna_codice_categoria_padre='Codice Categoria/Nodo Padre'):
     logger.debug("Started tree_builder()")
     tree = Tree()
     tree.create_node(identifier='root')
@@ -50,24 +64,23 @@ def tree_builder(gerarchia_estratta):
     for categoria in gerarchia_estratta:
         try:
             # crea nodo
-            tree.create_node(tag=categoria['Nome Categoria/Nodo Italiana'],
-                             identifier=categoria['Codice Categoria/Nodo'],
-                             parent=categoria['Codice Categoria/Nodo Padre'], data=categoria)
+            tree.create_node(tag=categoria[nome_colonna_categoria],
+                             identifier=categoria[nome_colonna_codice_categoria],
+                             parent=categoria[nome_colonna_codice_categoria_padre], data=categoria)
         except treelib.exceptions.NodeIDAbsentError:
             # se il nodo padre non esiste crea e appendi
             logger.debug("Father not found, creating one")
-            tree.create_node(tag=categoria['Nome Categoria/Nodo Italiana'],
-                             identifier=categoria['Codice Categoria/Nodo Padre'], parent='root')
-            tree.create_node(tag=categoria['Nome Categoria/Nodo Italiana'],
-                             identifier=categoria['Codice Categoria/Nodo'],
-                             parent=categoria['Codice Categoria/Nodo Padre'], data=categoria)
+            tree.create_node(tag=categoria[nome_colonna_categoria],
+                             identifier=categoria[nome_colonna_codice_categoria_padre], parent='root')
+            tree.create_node(tag=categoria[nome_colonna_categoria],
+                             identifier=categoria[nome_colonna_codice_categoria],
+                             parent=categoria[nome_colonna_codice_categoria_padre], data=categoria)
         except treelib.exceptions.DuplicatedNodeIdError:
             # sposta nodi padre già crati
             logger.debug("Merging duplicated node")
-            tree.move_node(categoria['Codice Categoria/Nodo'], categoria['Codice Categoria/Nodo Padre'])
+            tree.move_node(categoria[nome_colonna_codice_categoria], categoria[nome_colonna_codice_categoria_padre])
         except:
-            logger.error("File has unexpected format, check column names")
-            exit(0)
+            sys.exit("File has unexpected format, check column names")
 
     # rimuove le foglie e le inserisce in una lista
     leaves_data = []
@@ -78,7 +91,7 @@ def tree_builder(gerarchia_estratta):
 
 
 def dictionary_slicer(dictionary, start, end):
-    sliced_dictionary={}
+    sliced_dictionary = {}
     for key, i in zip(dictionary, range(start, end)):
         sliced_dictionary[key] = dictionary[key]
     return sliced_dictionary
@@ -92,14 +105,32 @@ def dictionary_cleaner(dictionary, discriminator=""):
     return cleaned_dictionary
 
 
+def separa_varianti(anagrafica, colonna_obsoleto='Obsoleto'):
+    varianti = []
+    varianti_obsolete = []
+    for variante in anagrafica:
+        if 'Si' in variante[colonna_obsoleto]:
+            varianti_obsolete.append(dictionary_slicer(variante, 0, 2))
+        else:
+            varianti.append(variante)
+    return varianti, varianti_obsolete
+
+
+def csv_write(list_of_elements, filename, dialect):
+    csv_file = open(filename, 'w')
+    keys = sorted(list_of_elements, key=len, reverse=True)[0].keys()
+    csv_writer = csv.DictWriter(csv_file, keys, dialect=dialect)
+    csv_writer.writeheader()
+    csv_writer.writerows(list_of_elements)
+    csv_file.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description='Genera importazione')
     parser.add_argument('-g', '--gerarchia', required=True,
                         help='file gerarchia')
     parser.add_argument('-a', '--anagrafica',
                         required=True, help='file anagrafica')
-    parser.add_argument('-s', '--separator', required=False,
-                        help='simbolo di separazione file csv (default: \';\')')
     parser.add_argument('-o', '--output', required=True,
                         help='directory di output')
     args = parser.parse_args()
@@ -111,8 +142,8 @@ def main():
         '.csv'), "Il file anagrafica deve essere di tipo csv"
 
     # estrae e ripulisce i dati
-    gerarchia_estratta = organize(extract(args.gerarchia))
-    anagrafica_estratta = organize(extract(args.anagrafica))
+    gerarchia_estratta = organize(read_file(args.gerarchia))
+    anagrafica_estratta = organize(read_file(args.anagrafica))
 
     # crea directory di output
     os.mkdir(args.output)
@@ -125,30 +156,30 @@ def main():
     logger.info("tree size: " + str(tree.size()))
 
     # separa le varianti di prodotti tra obsolete e non
-    varianti = []
-    varianti_obsolete = []
-    for variante in anagrafica_estratta:
-        if variante['Codice Categoria'] == '':
-            varianti_obsolete.append(dictionary_slicer(variante, 0, 2))
-        else:
-            varianti.append(variante)
+    varianti, varianti_obsolete = separa_varianti(anagrafica_estratta)
 
     # salvataggio dati estratti in formato json
-    with open("categorie.json", 'w') as f:
-        categorie = []
-        for node in tree.all_nodes()[1:]:
-            if node.data is not None:
-                categorie.append(dictionary_cleaner(node.data))
+    categorie = []
+    for node in tree.all_nodes()[1:]:
+        if node.data is not None:
+            categorie.append(dictionary_cleaner(node.data))
+
+    csv_write(categorie, "categorie.csv", dialect_sniffer(args.anagrafica))
+    csv_write(varianti, "varianti con caratteristiche.csv", dialect_sniffer(args.anagrafica))
+    csv_write(varianti_obsolete, "varianti obsolete.csv", dialect_sniffer(args.anagrafica))
+    csv_write(leaves, "prodotti.csv", dialect_sniffer(args.anagrafica))
+
+    with open("categorie.json", 'w', encoding='utf-8-sig') as f:
         json.dump(categorie, f)
 
     with open("varianti con caratteristiche.json", 'w', encoding='utf-8-sig') as f:
-        json.dump(varianti[10:], f)
+        json.dump(varianti, f)
 
     with open("varianti obsolete.json", 'w', encoding='utf-8-sig') as f:
-        json.dump(varianti_obsolete[10:], f)
+        json.dump(varianti_obsolete, f)
 
     with open("prodotti.json", 'w', encoding='utf-8-sig') as f:
-        json.dump(leaves[10:], f)
+        json.dump(leaves, f)
 
 
 if __name__ == "__main__":
