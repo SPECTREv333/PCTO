@@ -44,7 +44,6 @@ def read_file(input_file_path):
                 extracted.append(row)
         except csv.Error as e:
             sys.exit('file {}, line {}: {}'.format(input_file_path, csv_reader.line_num, e))
-
     return extracted
 
 
@@ -92,7 +91,7 @@ def tree_builder(gerarchia_estratta, nome_colonna_categoria='Nome Categoria/Nodo
 
 def dictionary_slicer(dictionary, start, end):
     sliced_dictionary = {}
-    for key, i in zip(dictionary, range(start, end)):
+    for key in list(dictionary.keys())[start:end]:
         sliced_dictionary[key] = dictionary[key]
     return sliced_dictionary
 
@@ -105,20 +104,41 @@ def dictionary_cleaner(dictionary, discriminator=""):
     return cleaned_dictionary
 
 
-def separa_varianti(anagrafica, colonna_obsoleto='Obsoleto'):
+def separa_varianti(anagrafica, colonna_obsoleto='Obsoleto', stringa_descrizione='Descrizione caratteristica', stringa_codice = 'Codice Prodotto', stringa_valore = 'Valore caratteristica'):
     varianti = []
     varianti_obsolete = []
+    caratteristiche_varianti = []
+    index_caratteristiche = 0
+    for item in list(anagrafica[0].keys()):
+        if stringa_descrizione in item:
+            index_caratteristiche = list(anagrafica[0].keys()).index(item)
+            break
+
     for variante in anagrafica:
         if 'Si' in variante[colonna_obsoleto]:
             varianti_obsolete.append(dictionary_slicer(variante, 0, 2))
         else:
-            varianti.append(variante)
-    return varianti, varianti_obsolete
+            varianti.append(dictionary_slicer(variante, 0, index_caratteristiche))
+            caratteristiche = dictionary_slicer(variante, index_caratteristiche, len(variante))
+            caratteristiche_correnti = {}
+            for key in caratteristiche:
+                if stringa_descrizione in key:
+                    caratteristiche_correnti[stringa_codice] = variante[stringa_codice]
+                    caratteristiche_correnti['Posizione'] = key.replace(stringa_descrizione, '').strip()
+                    caratteristiche_correnti['Descrizione'] = caratteristiche[key]
+                elif stringa_valore in key:
+                    caratteristiche_correnti['Valore'] = caratteristiche[key]
+                    caratteristiche_varianti.append(caratteristiche_correnti)
+                    caratteristiche_correnti = {}
+    return varianti, varianti_obsolete, caratteristiche_varianti
 
 
 def csv_write(list_of_elements, filename, dialect):
     csv_file = open(filename, 'w')
-    keys = sorted(list_of_elements, key=len, reverse=True)[0].keys()
+    try:
+        keys = list(sorted(list_of_elements, key=len, reverse=True)[0].keys())
+    except:
+        return
     csv_writer = csv.DictWriter(csv_file, keys, dialect=dialect)
     csv_writer.writeheader()
     csv_writer.writerows(list_of_elements)
@@ -132,10 +152,10 @@ def main():
     parser.add_argument('-a', '--anagrafica',
                         required=True, help='file anagrafica')
     parser.add_argument('-o', '--output', required=True,
-                        help='directory di output')
+                        help='-o directory_di_output')
     args = parser.parse_args()
 
-    assert not os.path.isdir(args.output), "Esiste già la directory di output"
+    #assert not os.path.isdir(args.output[0]), "Esiste già la directory di output"
     assert args.gerarchia.endswith(
         '.csv'), "Il file gerarchia deve essere di tipo csv"
     assert args.anagrafica.endswith(
@@ -144,6 +164,8 @@ def main():
     # estrae e ripulisce i dati
     gerarchia_estratta = organize(read_file(args.gerarchia))
     anagrafica_estratta = organize(read_file(args.anagrafica))
+    # separa le varianti di prodotti tra obsolete e non
+    varianti, obsolete, caratteristiche = separa_varianti(anagrafica_estratta)
 
     # crea directory di output
     os.mkdir(args.output)
@@ -155,9 +177,6 @@ def main():
     tree.save2file("albero_categorie.txt", idhidden=False)
     logger.info("tree size: " + str(tree.size()))
 
-    # separa le varianti di prodotti tra obsolete e non
-    varianti, varianti_obsolete = separa_varianti(anagrafica_estratta)
-
     # salvataggio dati estratti in formato json
     categorie = []
     for node in tree.all_nodes()[1:]:
@@ -165,8 +184,9 @@ def main():
             categorie.append(dictionary_cleaner(node.data))
 
     csv_write(categorie, "categorie.csv", dialect_sniffer(args.anagrafica))
-    csv_write(varianti, "varianti con caratteristiche.csv", dialect_sniffer(args.anagrafica))
-    csv_write(varianti_obsolete, "varianti obsolete.csv", dialect_sniffer(args.anagrafica))
+    csv_write(varianti, "varianti.csv", dialect_sniffer(args.anagrafica))
+    csv_write(obsolete, "varianti obsolete.csv", dialect_sniffer(args.anagrafica))
+    csv_write(caratteristiche, "caratteristiche.csv", dialect_sniffer(args.anagrafica))
     csv_write(leaves, "prodotti.csv", dialect_sniffer(args.anagrafica))
 
     with open("categorie.json", 'w', encoding='utf-8-sig') as f:
@@ -176,10 +196,13 @@ def main():
         json.dump(varianti, f)
 
     with open("varianti obsolete.json", 'w', encoding='utf-8-sig') as f:
-        json.dump(varianti_obsolete, f)
+        json.dump(obsolete, f)
 
     with open("prodotti.json", 'w', encoding='utf-8-sig') as f:
         json.dump(leaves, f)
+
+    with open("caratteristiche.json", 'w', encoding='utf-8-sig') as f:
+        json.dump(caratteristiche, f)
 
 
 if __name__ == "__main__":
