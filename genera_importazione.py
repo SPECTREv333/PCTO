@@ -192,7 +192,7 @@ def main():
     with open("categorie.json", 'w', encoding='utf-8-sig') as f:
         json.dump(categorie, f)
 
-    with open("varianti con caratteristiche.json", 'w', encoding='utf-8-sig') as f:
+    with open("varianti.json", 'w', encoding='utf-8-sig') as f:
         json.dump(varianti, f)
 
     with open("varianti obsolete.json", 'w', encoding='utf-8-sig') as f:
